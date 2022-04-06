@@ -6,6 +6,8 @@
 #include "ent_tag.h"
 
 #define INTERNAL_TAG_LENGTH (12)
+#define MAX_TEMPLATE_NUM_LENGTH (3)
+
 /*
   Entity Tags
   This file *should* contain functions for the following:
@@ -25,11 +27,11 @@
       - nrt_ent_tag *next
       - void *value
       - 1 bit type (0 int, 1 string)
-      - 7 bit size
+      - 7 bit size (0, 127) => (1, 128) [+null-terminator]
     - nrt_ent_archetype:
       - As above, but seperate type for storing the template of an entity
     - void nrt_free_ent_tag(nrt_ent_tag *tag)
-    - nrt_ent_tag *nrt_new_ent_from_archetype(nrt_ent_archetype *archetype)
+    - nrt_ent_tag *nrt_ent_new_ent_from_archetype(nrt_ent_archetype *archetype)
     - int nrt_ent_tag_get_int(nrt_ent_tag *tag)
     - char *nrt_ent_tag_get_str(nrt_ent_tag *tag) 
     - void nrt_ent_tag_set_int(nrt_ent_tag *tag, int val)
@@ -73,10 +75,94 @@ void nrt_free_ent_tag(nrt_ent_tag *tag) {
   free(tag->value);
   free(tag);
 } /* nrt_free_ent_tag() */
+
+/*
+ * Constructs an empty entity based on the given stream
+ * Okay, friend. Look here. I'm trusting you:
+ * This function has very little in the way of syntax validation
+ * for the lengths of the strings. Just don't be an idiot and we'll
+ * be fine;
+ */
+
+nrt_ent_tag *nrt_ent_new_ent_from_template(FILE *stream) {
+  /*
+  How a template file is structured:
+  INT
+  INT
+  STR 012
+  INT:
+    STR 045;
+  */
+  if (stream == NULL || feof(stream)) {
+    return NULL;
+  }
+  char token[9] = {0};
+  nrt_ent_tag *current = NULL;
+  nrt_ent_tag *head = NULL;
+  while (!feof(stream)) {
+
+    //Get rid of preceeding whitespace
+    fscanf(stream, "%*[ \t\n]");
+    int matches = fscanf(stream, "%8[^\n]\n", token);
+    if ((matches < 1) && !feof(stream)) {
+      printf("ENT_TAG : MALFORMATTED TEMPLATE");
+      return head;
+    }
+    if (feof(stream)) {
+      return head;
+    }
+    // 'INT' code
+    if ((token[0] == 'I') && (token[1] == 'N') && (token[2] == 'T')) {
+      if (current) {
+        current->next = nrt_ent_new_int_tag();
+        current = current->next;
+      } else {
+        current = nrt_ent_new_int_tag();
+        head = current;
+      }
+      if (token[3] == ':') {
+        current->child = nrt_ent_new_ent_from_template(stream);
+      } else if (token[3] == ';') {
+        return head;
+      }
+
+    // 'STR' code
+    } else if ((token[0] == 'S') && (token[1] == 'T') && (token[2] == 'R')) {
+      int length = 0;
+      for (int i = 4; i < 7; i++) {
+        if (token[i] < 48 || token[i] > 57) {
+          return head;
+        }
+        length = (length * 10) + (token[i] - 48);
+      }
+      if (current) {
+        current->next = nrt_ent_new_str_tag(length);
+        current = current->next;
+      } else {
+        current = nrt_ent_new_str_tag(length);
+        head = current;
+      }
+      if (token[7] == ':') {
+        current->child = nrt_ent_new_ent_from_template(stream);
+      } else if (token[7] == ';') {
+        return head;
+      }
+    // Single Semicolon
+    } else if (token[0] == ';') {
+      return head;
+    } else {
+      printf("ENT_TAG : MALFORMATTED TEMPLATE");
+      return head;
+    } 
+  }
+  return head;
+} /* nrt_new_ent_from_template() */
+
+
 /*
  * Takes a non-populated 'archetype' entity and creates a clone
  */
-nrt_ent_tag *nrt_new_ent_from_archetype(nrt_ent_archetype *archetype) {
+nrt_ent_tag *nrt_ent_new_ent_from_archetype(nrt_ent_archetype *archetype) {
   if (archetype == NULL) {
     return NULL;
   }
@@ -91,8 +177,8 @@ nrt_ent_tag *nrt_new_ent_from_archetype(nrt_ent_archetype *archetype) {
   }
   assert(new_tag->value);
   new_tag->type = archetype->type;
-  new_tag->next = nrt_new_ent_from_archetype(archetype->next);
-  new_tag->child = nrt_new_ent_from_archetype(archetype->child);
+  new_tag->next = nrt_ent_new_ent_from_archetype(archetype->next);
+  new_tag->child = nrt_ent_new_ent_from_archetype(archetype->child);
   return new_tag;
 } /* nrt_new_ent_from_archetype() */
 
@@ -148,7 +234,7 @@ void nrt_ent_tag_set_int(nrt_ent_tag *tag, int val) {
 } /* nrt_ent_tag_set_str() */
 
 /*
- * Generates an unlinked tag with the given name and size
+ * Generates an unlinked tag with the given size
  */
 
 nrt_ent_tag *nrt_ent_new_str_tag(unsigned char size) {
@@ -163,6 +249,7 @@ nrt_ent_tag *nrt_ent_new_str_tag(unsigned char size) {
   new_tag->type = 1;
   new_tag->value = malloc(sizeof(char) * (size+2));
   assert(new_tag->value);
+  ((char *) new_tag->value)[0] = '\0';
   return new_tag;
 } /* nrt_ent_new_str_tag() */
 
@@ -180,8 +267,11 @@ nrt_ent_tag *nrt_ent_new_int_tag() {
   new_tag->type = 0;
   new_tag->value = malloc(sizeof(int));
   assert(new_tag->value);
+  *((int *) new_tag->value) = 0;
   return new_tag;
 } /* nrt_ent_new_int_tag() */
+
+
 
 
 /*
