@@ -81,7 +81,7 @@ void nrt_free_ent_tag(nrt_ent_tag *tag) {
  * Okay, friend. Look here. I'm trusting you:
  * This function has very little in the way of syntax validation
  * for the lengths of the strings. Just don't be an idiot and we'll
- * be fine;
+ * be fine; THIS HAS BEEN FIXED
  */
 
 nrt_ent_tag *nrt_ent_new_ent_from_template(FILE *stream) {
@@ -172,6 +172,7 @@ nrt_ent_tag *nrt_ent_new_ent_from_archetype(nrt_ent_archetype *archetype) {
   if (archetype->type) {
     new_tag->value = malloc(sizeof(char) * (archetype->size + 2));
     new_tag->size = archetype->size;
+    ((char *) new_tag->value)[0] = '\0';
   } else {
     new_tag->value = malloc(sizeof(int));
   }
@@ -181,6 +182,32 @@ nrt_ent_tag *nrt_ent_new_ent_from_archetype(nrt_ent_archetype *archetype) {
   new_tag->child = nrt_ent_new_ent_from_archetype(archetype->child);
   return new_tag;
 } /* nrt_new_ent_from_archetype() */
+
+/*
+ * Recursively clones an entity tag
+ */
+
+nrt_ent_tag *nrt_ent_clone(nrt_ent_tag *source) {
+  if (source) {
+    nrt_ent_tag *new_tag = malloc(sizeof(nrt_ent_tag));
+    assert(new_tag);
+    if(source->type) {
+      new_tag->value = malloc(sizeof(char) * (source->size + 2));
+      new_tag->size = source->size;
+      strncpy(((char *) new_tag->value), ((char *) source->value), source->size + 2);
+      ((char *) new_tag->value)[source->size + 1] = '\0';
+    } else {
+      new_tag->value = malloc(sizeof(int));
+      new_tag->size = 2;
+      *((int *)new_tag->value) = *((int *) source->value);
+    }
+    new_tag->next = nrt_ent_clone(source->next);
+    new_tag->child = nrt_ent_clone(source->child);
+  }
+  return NULL;
+} /* nrt_ent_clone() */
+
+
 
 /*
  * Returns the type of a tag
@@ -218,7 +245,7 @@ char *nrt_ent_tag_get_str(nrt_ent_tag *tag) {
 
 void nrt_ent_tag_set_str(nrt_ent_tag *tag, char *str) {
   if (tag->type) {
-    strcpy((char *) tag->value, str);
+    strncpy((char *) tag->value, str, tag->size + 2);
     ((char *) tag->value)[tag->size + 1] = '\0'; //Null-terminating just in case
   }
 } /* nrt_ent_tag_set_str() */

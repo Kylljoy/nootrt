@@ -34,6 +34,7 @@ typedef nrt_ent_tag nrt_ent_archetype;
 void nrt_free_ent_tag(nrt_ent_tag *tag);
 nrt_ent_tag *nrt_ent_new_ent_from_archetype(nrt_ent_archetype *archetype);
 nrt_ent_tag *nrt_ent_new_ent_from_template(FILE *stream);
+nrt_ent_tag *nrt_ent_clone(nrt_ent_tag *source);
 int nrt_ent_tag_get_int(nrt_ent_tag *tag);
 char *nrt_ent_tag_get_str(nrt_ent_tag *tag);
 void nrt_ent_tag_set_int(nrt_ent_tag *tag, int val);
